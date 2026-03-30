@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poma-primecut-nano"
+version = "0.1.0"
+description = "Hierarchical document chunking for RAG. Structure in, structure out."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "POMA Team" }]
+keywords = ["rag", "chunking", "markdown", "hierarchical", "retrieval", "chunksets", "poma", "primecut"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/poma-ai/poma-primecut-nano"
+Documentation = "https://github.com/poma-ai/poma-primecut-nano#readme"
+
+[tool.setuptools.packages.find]
+include = ["poma_primecut_nano*"]
