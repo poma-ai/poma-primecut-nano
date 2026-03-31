@@ -42,8 +42,7 @@ def build_ancestor_maps(
 
 
 def chunks_to_chunksets(
-    chunks: list[dict],
-    target_tokens: int = 512,
+    chunks: list[dict]
 ) -> list[dict]:
     """Build chunksets from chunks using ancestor paths.
 
@@ -53,7 +52,6 @@ def chunks_to_chunksets(
 
     Args:
         chunks: List with chunk_index, content, depth, parent_chunk_index
-        target_tokens: Target token budget per chunkset
 
     Returns:
         List of dicts: [{chunkset_index, chunk_ids: list[int], contents: str}]
