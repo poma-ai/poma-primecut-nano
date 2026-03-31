@@ -9,7 +9,7 @@ description = "Hierarchical document chunking for RAG. Structure in, structure o
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "POMA Team" }]
+authors = [{ name = "POMA AI GmbH, Berlin", email = "sdk@poma-ai.com" }]
 keywords = ["rag", "chunking", "markdown", "hierarchical", "retrieval", "chunksets", "poma", "primecut"]
 classifiers = [
     "Development Status :: 3 - Alpha",
