@@ -163,7 +163,7 @@ answer = llm.complete(f"Based on this context:\n{context}\n\nQuestion: {user_que
 
 | Function | Input | Output |
 |----------|-------|--------|
-| `normalize_for_embedding(text)` | Raw text | Clean text for embedding (HTML strip, NFKD, whitespace) |
+| `normalize_for_embedding(text)` | Raw text | Clean text for embedding (HTML strip, NFKC, whitespace) |
 
 ---
 

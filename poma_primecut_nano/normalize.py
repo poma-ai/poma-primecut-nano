@@ -10,7 +10,7 @@ def normalize_for_embedding(text: str) -> str:
     """Produce embedding-ready text from chunk/chunkset contents.
 
     Matches poma-core's normalize_for_embedding():
-    HTML strip (table-aware) -> NFKD -> whitespace collapse -> thousand-separator removal.
+    HTML strip (table-aware) -> NFKC -> whitespace collapse -> thousand-separator removal.
     """
     if not text:
         return text
@@ -30,8 +30,9 @@ def normalize_for_embedding(text: str) -> str:
         text = re.sub(r"<[^>]+>", "", text)
         text = html.unescape(text)
         text = re.sub(r"\s+", " ", text)
-    # Unicode NFKD
-    text = unicodedata.normalize("NFKD", text)
+    # Unicode NFKC — same compat transforms as NFKD (ﬁ→fi, ²→2) but keeps
+    # composed chars (ü stays ü), preventing downstream regex/tokenizer issues.
+    text = unicodedata.normalize("NFKC", text)
     # Whitespace normalization
     text = re.sub(r"\r\n|\r", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
