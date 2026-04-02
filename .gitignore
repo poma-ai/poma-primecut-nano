@@ -6,3 +6,9 @@ build/
 .eggs/
 *.so
 .DS_Store
+CLAUDE.local.md
+events.jsonl
+
+# Claude Code / Megavibe
+.agent/
+.claude/
