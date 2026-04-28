@@ -7,7 +7,7 @@ Assemble readable output from search hits with gap markers.
 Use any vector DB, any embedding model, any framework.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from poma_primecut_nano.chunker import indent_light as _indent_light
 from poma_primecut_nano.tree import parse_indented_text as _parse, normalize_depths as _normalize
