@@ -51,6 +51,16 @@ _SENT_SPLIT_RE = re.compile(
 )
 _CLAUSE_BOUNDARY_RE = re.compile(r"(?s)(.*?)([;:,，、；：]+)(\s+|$)")
 
+# Punctuation that ends a complete thought (kept in line with poma-core's
+# utils.SENTENCE_TERMINATORS — Latin, Armenian, Hebrew, Arabic, Devanagari,
+# Thai, Ethiopic, CJK). A prose line ending on one of these closes the
+# paragraph staircase (snapback); an open line end chains the next line.
+_SENTENCE_TERMINATORS_TUPLE = (
+    "!", ".", ":", ";", "?", "\u055c", "\u055e", "\u0589", "\u05c3",
+    "\u061b", "\u061f", "\u06d4", "\u0964", "\u0965", "\u0e5b",
+    "\u1362", "\u1368", "\u3002", "\uff01", "\uff1a", "\uff1b", "\uff1f",
+)
+
 # Common abbreviations that should NOT trigger sentence splits
 _ABBR = {
     "dr.", "mr.", "mrs.", "ms.", "prof.", "sr.", "jr.", "etc.", "e.g.", "i.e.",
@@ -107,6 +117,12 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
     current_heading_depth = 0
     colon_parent_depth: int | None = None
     pseudo_parent_depth: int | None = None
+    # Prose staircase (mirrors poma-core indentation/nano.py): within a
+    # paragraph each further sentence nests one deeper, so retrieval's
+    # ancestor walk reconstructs the leading prose context from any hit.
+    # Chains across lines only on positive wrap evidence (previous line
+    # ended without a terminator); a terminated line end snaps back.
+    staircase_next_depth: int | None = None
 
     last_anchor_depth = 0
     after_placeholder_return_depth: int | None = None
@@ -137,6 +153,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
+            staircase_next_depth = None
             continue
 
         if kind == "thematic":
@@ -144,6 +161,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
+            staircase_next_depth = None
             continue
 
         if kind == "code_fence":
@@ -153,6 +171,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             last_anchor_depth = d
             last_was_placeholder = False
             after_placeholder_return_depth = None
+            staircase_next_depth = None
             continue
 
         if kind == "table_block":
@@ -162,6 +181,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             last_anchor_depth = d
             last_was_placeholder = False
             after_placeholder_return_depth = None
+            staircase_next_depth = None
             continue
 
         if kind == "heading":
@@ -169,6 +189,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
+            staircase_next_depth = None
 
             md_level = ev[2]
             if not md_level:
@@ -185,6 +206,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             colon_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
+            staircase_next_depth = None
             emit(d, line)
             last_anchor_depth = d
             continue
@@ -194,6 +216,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             last_placeholder_depth = parent + 1
             emit(last_placeholder_depth, line)
             last_was_placeholder = True
+            staircase_next_depth = None
             after_placeholder_return_depth = parent
             continue
 
@@ -242,6 +265,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
                 last_anchor_depth = base
                 colon_parent_depth = None
                 after_placeholder_return_depth = None
+                staircase_next_depth = None
                 continue
 
             # Standalone link
@@ -251,25 +275,40 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
                 last_anchor_depth = d
                 colon_parent_depth = None
                 after_placeholder_return_depth = None
+                staircase_next_depth = None
                 continue
 
-            # Normal text: sentence split
+            # Normal prose: STAIRCASE (mirrors poma-core nano) — the
+            # paragraph's first sentence anchors at body depth, each further
+            # sentence nests one deeper; the chain crosses onto the next
+            # line only when this line ends without a terminator (hard-wrap
+            # evidence), otherwise the next line snaps back to body depth.
+            sentences = _split_sentences_linewise(line) or [line]
             d = body_depth()
-            sentences = _split_sentences_linewise(line)
-            if not sentences:
-                for piece, delta in _enforce_limit_anchor(line):
+            block_base: int | None = None
+            for s in sentences:
+                if staircase_next_depth is None:
+                    d = body_depth()
+                    block_base = d
+                else:
+                    d = max(staircase_next_depth, body_depth())
+                for piece, delta in _enforce_limit_anchor(s):
                     emit(d + delta, piece)
-            else:
-                for s in sentences:
-                    for piece, delta in _enforce_limit_anchor(s):
-                        emit(d + delta, piece)
-                    if s.rstrip().endswith((":", "：")):
-                        colon_parent_depth = d
-                    else:
-                        if colon_parent_depth == d:
-                            colon_parent_depth = None
+                staircase_next_depth = d + 1
+                if s.rstrip().endswith((":", "：")):
+                    colon_parent_depth = d
+                elif colon_parent_depth == d:
+                    colon_parent_depth = None
 
-            last_anchor_depth = d
+            if sentences and sentences[-1].rstrip().endswith(
+                _SENTENCE_TERMINATORS_TUPLE
+            ):
+                staircase_next_depth = None
+
+            # Staircase deepens prose parents only: followers (placeholders,
+            # captions) anchor to the paragraph base, as under flat emission.
+            if block_base is not None:
+                last_anchor_depth = block_base
             after_placeholder_return_depth = None
             continue
 
