@@ -101,7 +101,9 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
     def emit(depth: int, s: str) -> None:
         s = s.rstrip("\n")
         if s:
-            out.append(("→" * max(0, depth)) + s)
+            # The tree parser reads each line separately, including block lines.
+            prefix = "→" * max(0, depth)
+            out.extend(prefix + line for line in s.split("\n"))
 
     # State
     current_heading_depth = 0
@@ -398,7 +400,7 @@ def _extract_title(
             sents = _split_sentences_linewise(ev[1].strip())
             if sents:
                 title = sents[0].strip()
-                rest = sents[1].strip() if len(sents) > 1 else ""
+                rest = "".join(sents[1:]).strip()
                 new_events = (
                     events[:idx]
                     + ([("line", rest, None)] if rest else [])
