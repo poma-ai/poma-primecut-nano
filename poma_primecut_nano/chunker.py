@@ -107,7 +107,8 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
 
     # State
     current_heading_depth = 0
-    colon_parent_depth: int | None = None
+    # (source indentation, output depth), from outermost to innermost label.
+    colon_parents: list[tuple[int, int]] = []
     pseudo_parent_depth: int | None = None
 
     last_anchor_depth = 0
@@ -124,8 +125,8 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
         d = max(1, current_heading_depth + 1)
         if pseudo_parent_depth is not None:
             d = max(d, pseudo_parent_depth + 1)
-        if colon_parent_depth is not None:
-            d = max(d, colon_parent_depth + 1)
+        if colon_parents:
+            d = max(d, colon_parents[-1][1] + 1)
         if after_placeholder_return_depth is not None:
             d = max(d, after_placeholder_return_depth)
         return d
@@ -135,14 +136,14 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
         line = ev[1]
 
         if kind == "blank":
-            colon_parent_depth = None
+            colon_parents.clear()
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
             continue
 
         if kind == "thematic":
-            colon_parent_depth = None
+            colon_parents.clear()
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
@@ -167,7 +168,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             continue
 
         if kind == "heading":
-            colon_parent_depth = None
+            colon_parents.clear()
             pseudo_parent_depth = None
             after_placeholder_return_depth = None
             last_was_placeholder = False
@@ -184,7 +185,7 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
         if kind == "pseudo_heading":
             d = body_depth()
             pseudo_parent_depth = d
-            colon_parent_depth = None
+            colon_parents.clear()
             after_placeholder_return_depth = None
             last_was_placeholder = False
             emit(d, line)
@@ -213,13 +214,28 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             if last_was_placeholder:
                 last_was_placeholder = False
 
-            # Lists
+            # Resolve colon context before assigning the current line's depth.
             mul = _UL_ITEM_RE.match(line)
             mol = _OL_ITEM_RE.match(line)
             mal = _ALPHA_ITEM_RE.match(line)
             mrl = _ROMAN_ITEM_RE.match(line)
-            if mul or mol or mal or mrl:
-                base = body_depth() + (0 if colon_parent_depth is not None else 1)
+            is_list = bool(mul or mol or mal or mrl)
+            is_link = bool(_LINK_LINE_RE.match(line))
+            is_colon_label = not (is_list or is_link) and line.rstrip().endswith((":", "："))
+            indent = _expand_indent(line[:len(line) - len(line.lstrip(" \t"))])
+
+            # A label opens a level for following content, not for a peer label.
+            # Keep outer labels so a dedented sibling can recover its parent.
+            while colon_parents and (
+                indent < colon_parents[-1][0]
+                or (is_colon_label and indent == colon_parents[-1][0])
+            ):
+                colon_parents.pop()
+                after_placeholder_return_depth = None
+
+            # Lists keep their marker/indentation rules, including colon items.
+            if is_list:
+                base = body_depth() + (0 if colon_parents else 1)
                 if mul:
                     indent_raw, marker, rest = mul.group(1), mul.group(2), mul.group(3)
                     nest = _list_nesting(_expand_indent(indent_raw))
@@ -242,16 +258,14 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
                     _emit_list_item(d, f"{roman}. {rest}", emit)
 
                 last_anchor_depth = base
-                colon_parent_depth = None
                 after_placeholder_return_depth = None
                 continue
 
             # Standalone link
-            if _LINK_LINE_RE.match(line):
+            if is_link:
                 d = body_depth()
                 emit(d, line)
                 last_anchor_depth = d
-                colon_parent_depth = None
                 after_placeholder_return_depth = None
                 continue
 
@@ -265,11 +279,9 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
                 for s in sentences:
                     for piece, delta in _enforce_limit_anchor(s):
                         emit(d + delta, piece)
-                    if s.rstrip().endswith((":", "：")):
-                        colon_parent_depth = d
-                    else:
-                        if colon_parent_depth == d:
-                            colon_parent_depth = None
+
+            if is_colon_label:
+                colon_parents.append((indent, d))
 
             last_anchor_depth = d
             after_placeholder_return_depth = None
@@ -399,6 +411,9 @@ def _extract_title(
         if ev[0] == "line" and ev[1].strip():
             sents = _split_sentences_linewise(ev[1].strip())
             if sents:
+                # Keep a leading label in the body pass with its peers and children.
+                if sents[0].rstrip().endswith((":", "：")):
+                    return None, events
                 title = sents[0].strip()
                 rest = "".join(sents[1:]).strip()
                 new_events = (
