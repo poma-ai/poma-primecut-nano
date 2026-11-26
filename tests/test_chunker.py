@@ -334,7 +334,19 @@ def test_plain_label_first_line_is_not_the_title() -> None:
     assert [item["depth"] for item in chunk("Intro:\nbody")] == [1, 2]
 
 
-def test_heading_after_front_matter_label_is_the_title() -> None:
-    chunks = chunk("---\ntags:\n  - a\n---\n# Doc\ntext")
-    assert chunks[0]["depth"] == 0
-    assert chunks[0]["content"].strip() == "Doc"
+def test_label_first_document_keeps_source_order() -> None:
+    # A leading label is not the title, and no later heading is pulled up
+    # to take its place: chunks stay in source order.
+    for text in (
+        "---\ntags:\n  - a\n---\n# Doc\ntext",
+        "---\nIntro:\nfoo bar.\nbaz.\n\nParagraph one.\n\n## Later\nbody\n### Deeper\nx",
+        "---\nname:\n---\nPara one.\n\nPara two.\n\n## Real section\nbody\n## Other\ny",
+    ):
+        chunks = chunk(text)
+        contents = [c["content"].strip() for c in chunks]
+        cursor = 0
+        for content in contents:
+            found = text.find(content.lstrip("#- ").strip(), cursor)
+            assert found >= 0, (content, contents)
+            cursor = found + 1
+        assert all(c["depth"] >= 1 for c in chunks), [c["depth"] for c in chunks]

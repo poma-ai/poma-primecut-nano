@@ -434,14 +434,8 @@ def _extract_title(
                         )
                     )
                 ):
-                    # Front matter before a real heading: the heading is the title.
-                    if any(e[0] == "thematic" for e in events[:idx]):
-                        for hidx in range(idx + 1, len(events)):
-                            if events[hidx][0] == "heading":
-                                return (
-                                    events[hidx][1].strip(),
-                                    events[:hidx] + events[hidx + 1:],
-                                )
+                    # No title is taken from further down: hoisting a later
+                    # heading would move it ahead of the text before it.
                     return None, events
                 title = sents[0].strip()
                 rest = "".join(sents[1:]).strip()
