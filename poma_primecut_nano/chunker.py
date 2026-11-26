@@ -70,7 +70,9 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
 
     Each output line is prefixed with arrow characters (→) indicating
     its depth in the document hierarchy. Depth 0 = document title,
-    depth 1+ = sections/subsections/body.
+    depth 1+ = sections/subsections/body. A document that starts with a
+    plain colon-ending label line has no title: that label is body text
+    at depth 1.
 
     Args:
         text: Markdown text to chunk.
@@ -225,15 +227,23 @@ def indent_light(text: str, *, extract_title: bool = True) -> str:
             indent = _expand_indent(line[:len(line) - len(line.lstrip(" \t"))])
 
             # A label opens a level for following content, not for a peer label.
+            # Only a single-sentence line is a peer label: "We tried X. The
+            # result was:" is body text whose last sentence opens a level, so
+            # it must not pop the enclosing label. Known limit: two
+            # colon-ending single-sentence lines at the same indentation are
+            # siblings, even inside a hard-wrapped paragraph.
             # Keep outer labels so a dedented sibling can recover its parent.
+            peer_label = is_colon_label and len(_split_sentences_linewise(line)) <= 1
             while colon_parents and (
                 indent < colon_parents[-1][0]
-                or (is_colon_label and indent == colon_parents[-1][0])
+                or (peer_label and indent == colon_parents[-1][0])
             ):
                 colon_parents.pop()
                 after_placeholder_return_depth = None
 
             # Lists keep their marker/indentation rules, including colon items.
+            # Unindented body text directly after a list under a label (no
+            # blank line) stays under the label; a blank line ends it.
             if is_list:
                 base = body_depth() + (0 if colon_parents else 1)
                 if mul:
@@ -411,8 +421,27 @@ def _extract_title(
         if ev[0] == "line" and ev[1].strip():
             sents = _split_sentences_linewise(ev[1].strip())
             if sents:
-                # Keep a leading label in the body pass with its peers and children.
-                if sents[0].rstrip().endswith((":", "：")):
+                # Keep a leading plain label (single sentence, not a list item
+                # or link) in the body pass with its peers and children.
+                if (
+                    len(sents) == 1
+                    and sents[0].rstrip().endswith((":", "："))
+                    and not any(
+                        r.match(ev[1])
+                        for r in (
+                            _UL_ITEM_RE, _OL_ITEM_RE, _ALPHA_ITEM_RE,
+                            _ROMAN_ITEM_RE, _LINK_LINE_RE,
+                        )
+                    )
+                ):
+                    # Front matter before a real heading: the heading is the title.
+                    if any(e[0] == "thematic" for e in events[:idx]):
+                        for hidx in range(idx + 1, len(events)):
+                            if events[hidx][0] == "heading":
+                                return (
+                                    events[hidx][1].strip(),
+                                    events[:hidx] + events[hidx + 1:],
+                                )
                     return None, events
                 title = sents[0].strip()
                 rest = "".join(sents[1:]).strip()

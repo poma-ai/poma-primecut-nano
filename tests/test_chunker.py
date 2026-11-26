@@ -208,7 +208,7 @@ def test_colon_run_does_not_accumulate_depth(colon: str, indent: str) -> None:
         ),
         pytest.param(
             "Group:\nName. Status:\nOwner:",
-            [1, 1, 1, 1], [0, 0, 0, 0], id="sentence-split-label",
+            [1, 2, 2, 1], [0, 1, 1, 0], id="sentence-split-label",
         ),
     ],
 )
@@ -288,3 +288,53 @@ def test_pseudo_heading_does_not_accumulate_depth() -> None:
     chunks = chunk("# Record\n\nFields:\n\nName:\nStatus:\nOwner:")
     assert [item["depth"] for item in chunks] == [0, 1, 1, 1, 1]
     assert [item["parent_chunk_index"] for item in chunks] == [None, 0, 0, 0, 0]
+
+
+def _depth_and_content(source: str) -> list[tuple[int, str]]:
+    return [(item["depth"], item["content"].strip()) for item in chunk(source)]
+
+
+def test_multi_sentence_line_ending_in_colon_keeps_enclosing_label() -> None:
+    source = "# T\nContext:\nWe tried X. The result was:\n  - a\n  - b\nDecision:\nUse Y."
+    depths = {content: depth for depth, content in _depth_and_content(source)}
+    assert depths["Context:"] == 1
+    assert depths["We tried X."] == 2
+    assert depths["The result was:"] == 2
+    assert depths["Decision:"] == 1
+    assert depths["Use Y."] == 2
+    # The same under a section heading.
+    nested = "# T\n## D1\nContext:\nWe tried X. The result was:\n  - a\n  - b\nDecision:\nUse Y."
+    depths = {content: depth for depth, content in _depth_and_content(nested)}
+    assert depths["Context:"] == 2
+    assert depths["We tried X."] == 3
+    assert depths["The result was:"] == 3
+    assert depths["Decision:"] == 2
+
+
+def test_unindented_text_after_list_under_label_stays_under_label() -> None:
+    depths = [d for d, _ in _depth_and_content("# T\nSteps:\n1. a\n2. b\nThat is all.")]
+    assert depths == [0, 1, 2, 2, 2]
+    # A blank line ends the label.
+    depths = [d for d, _ in _depth_and_content("# T\nSteps:\n1. a\n2. b\n\nThat is all.")]
+    assert depths == [0, 1, 2, 2, 1]
+
+
+@pytest.mark.parametrize(
+    "source, first_depth",
+    [
+        pytest.param("- Fruits:\n  - apple", 0, id="list-item"),
+        pytest.param("http://x.com/a:\nbody", 0, id="link-line"),
+    ],
+)
+def test_list_or_link_first_line_is_still_the_title(source: str, first_depth: int) -> None:
+    assert chunk(source)[0]["depth"] == first_depth
+
+
+def test_plain_label_first_line_is_not_the_title() -> None:
+    assert [item["depth"] for item in chunk("Intro:\nbody")] == [1, 2]
+
+
+def test_heading_after_front_matter_label_is_the_title() -> None:
+    chunks = chunk("---\ntags:\n  - a\n---\n# Doc\ntext")
+    assert chunks[0]["depth"] == 0
+    assert chunks[0]["content"].strip() == "Doc"
